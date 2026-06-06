@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>NCR Fiscal-Infrastructure Gap</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  
+  <style>
+    /* Premium Glassmorphism Variables & Class */
+    :root {
+      --glass-blur: 20px;
+      --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
+    }
+
+    .glass-panel {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.15) 100%);
+      backdrop-filter: blur(var(--glass-blur));
+      -webkit-backdrop-filter: blur(var(--glass-blur));
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      border-right: 1px solid rgba(255, 255, 255, 0.2);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: var(--glass-shadow);
+      border-radius: 14px;
+      transition: all 0.3s ease;
+    }
+
+    .glass-panel:hover {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.2) 100%);
+      box-shadow: 0 12px 40px rgba(31, 38, 135, 0.2);
+    }
+
+    /* Base Reset */
+    body { 
+      margin: 0; 
+      padding: 0; 
+      font-family: 'Segoe UI', Roboto, Arial, sans-serif; 
+      background: linear-gradient(135deg, #dbeafe 0%, #f1f5f9 50%, #e0e7ff 100%); 
+      overflow: hidden;
+    }
+    #map { width: 100vw; height: 100vh; z-index: 1; }
+    
+    /* Center Title Card */
+    .app-header {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1200;
+      padding: 12px 28px;
+      border-radius: 20px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .app-header h1 { margin: 0; font-size: 18px; color: #1f2937; letter-spacing: 0.5px; }
+    .app-header p { margin: 4px 0 0 0; font-size: 12px; color: #374151; font-weight: 500; }
+
+    /* Top Left: Search Bar */
+    .search-controls {
+      position: absolute;
+      top: 15px;
+      left: 20px;
+      z-index: 1000;
+      display: flex;
+      gap: 10px;
+      padding: 12px 16px;
+    }
+    .search-input-wrapper { position: relative; }
+    .search-input-wrapper input {
+      border: 1.5px solid rgba(255,255,255,0.6); border-radius: 8px; padding: 8px 14px;
+      font-size: 13px; outline: none; width: 140px; transition: all 0.2s ease;
+      background: rgba(255,255,255,0.7);
+    }
+    .search-input-wrapper input:focus { 
+      border-color: #3b4994; background: white;
+      box-shadow: 0 0 0 3px rgba(59, 73, 148, 0.1);
+      width: 180px; /* expands slightly when typing */
+    }
+    
+    .search-dropdown {
+      position: absolute; top: 100%; left: 0; width: 100%;
+      background: rgba(255, 255, 255, 0.98); border: 1.5px solid #e5e7eb;
+      border-top: none; border-radius: 0 0 8px 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+      margin: 0; padding: 0; list-style: none; max-height: 280px; overflow-y: auto; display: none; z-index: 1001;
+    }
+    .search-dropdown li {
+      padding: 12px 14px; font-size: 13px; color: #374151; cursor: pointer;
+      border-bottom: 1px solid #f3f4f6; transition: all 0.15s ease;
+    }
+    .search-dropdown li:hover { background-color: #f3f4f6; color: #3b4994; padding-left: 18px; }
+    
+    .search-controls button {
+      background: linear-gradient(135deg, #3b4994 0%, #2e3875 100%);
+      color: white; border: none; border-radius: 8px;
+      padding: 8px 16px; cursor: pointer; transition: all 0.2s ease; font-weight: 600; font-size: 13px;
+    }
+    .search-controls button:hover { background: linear-gradient(135deg, #2e3875 0%, #1e2654 100%); transform: translateY(-1px); }
+    #zoomNCRBtn { background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 8px 14px; font-size: 12px; }
+    #zoomNCRBtn:hover { background: linear-gradient(135deg, #047857 0%, #065f46 100%); }
+
+    /* Top Right: Combined Control Panel */
+    .combined-controls {
+      position: absolute;
+      top: 15px; 
+      right: 20px;
+      z-index: 1000;
+      padding: 16px 20px;
+      min-width: 200px;
+    }
+    
+    .panel-section-title {
+      color: #1f2937; font-weight: 700; margin: 0 0 12px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;
+    }
+    
+    .panel-divider {
+      height: 1px; background: rgba(0,0,0,0.1); margin: 14px 0; border: none;
+    }
+
+    .toggle-layout {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;
+    }
+    
+    .mode-label { font-size: 13px; font-weight: 600; color: #374151; }
+    .switch { position: relative; display: inline-block; width: 48px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      transition: all 0.4s ease; border-radius: 34px;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 18px; width: 18px;
+      left: 3px; top: 3px; background-color: white; transition: all 0.4s ease; border-radius: 50%;
+    }
+    input:checked + .slider { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); }
+    input:checked + .slider:before { transform: translateX(24px); }
+
+    .checkbox-container {
+      display: flex; align-items: center; margin: 10px 0; font-size: 13px;
+      color: #374151; font-weight: 500; cursor: pointer; position: relative; transition: all 0.2s ease;
+    }
+    .checkbox-container:hover { color: #3b4994; transform: translateX(2px); }
+    .checkbox-container input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
+    .custom-checkbox {
+      height: 16px; width: 16px; background-color: rgba(255,255,255,0.7);
+      border-radius: 4px; margin-right: 10px; transition: all 0.2s ease; border: 1px solid #d1d5db;
+    }
+    .checkbox-container:hover input ~ .custom-checkbox { background-color: rgba(255,255,255,1); border-color: #3b4994; }
+    .checkbox-container input:checked ~ .custom-checkbox { background: linear-gradient(135deg, #3b4994 0%, #2e3875 100%); border-color: #3b4994; }
+    .custom-checkbox:after {
+      content: ""; position: absolute; display: none; left: 5px; top: 2px;
+      width: 3px; height: 7px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg);
+    }
+    .checkbox-container input:checked ~ .custom-checkbox:after { display: block; }
+
+    /* Bottom Left: Priority Ranking Sidebar */
+    .priority-sidebar {
+      position: fixed;
+      left: 20px;
+      bottom: 30px;
+      width: clamp(260px, 20vw, 320px);
+      max-height: 55vh;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: 14px;
+    }
+
+    .priority-header {
+      padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.3);
+      background: linear-gradient(135deg, rgba(59, 73, 148, 0.9) 0%, rgba(46, 56, 117, 0.9) 100%);
+      color: white; flex-shrink: 0; white-space: nowrap; border-radius: 14px 14px 0 0;
+    }
+    .priority-header h3 { margin: 0 0 4px 0; font-size: 14px; font-weight: 700; }
+    .priority-header p { margin: 0; font-size: 11px; opacity: 0.9; font-weight: 500; }
+
+    /* Fixed Table Layout for Priority List */
+    .priority-list-container {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      background: rgba(249, 250, 251, 0.7);
+    }
+
+    .priority-column-headers {
+      display: grid;
+      grid-template-columns: 1fr 3.5fr 1.5fr 1.5fr 2fr;
+      gap: 8px;
+      padding: 10px 16px;
+      background: rgba(229, 231, 235, 0.85);
+      border-bottom: 1px solid #d1d5db;
+      font-weight: 700;
+      font-size: 10px;
+      color: #4b5563;
+      text-transform: uppercase;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .priority-col-header { text-align: center; align-items: center; }
+    .priority-col-header:nth-child(2) { text-align: left; }
+
+    .priority-row {
+      display: grid;
+      grid-template-columns: 1fr 3.5fr 1.5fr 1.5fr 2fr;
+      gap: 8px;
+      padding: 12px 16px;
+      margin: 0;
+      border-radius: 0;
+      background: transparent; 
+      border-left: 4px solid transparent; 
+      border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 11px;
+      align-items: center;
+      font-weight: 500;
+    }
+
+    .priority-row:hover {
+      background: rgba(255, 255, 255, 0.95);
+      border-left-color: #3b4994;
+    }
+
+    .priority-row.highlighted {
+      background: rgba(254, 243, 199, 0.9);
+      border-left-color: #f59e0b;
+    }
+
+    .priority-rank { font-weight: 700; color: #3b4994; text-align: center; font-size: 12px; }
+    .priority-city { font-weight: 600; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .priority-cell { color: #4b5563; text-align: center; }
+    .priority-score { font-weight: 700; text-align: center; border-radius: 6px; padding: 4px; font-size: 10px; }
+    
+    .priority-score.critical { background: rgba(254,226,226,0.8); color: #b91c1c; border: 1px solid #fca5a5; }
+    .priority-score.high { background: rgba(254,215,170,0.8); color: #d97706; border: 1px solid #fdba74; }
+    .priority-score.medium { background: rgba(254,243,199,0.8); color: #b45309; border: 1px solid #fcd34d; }
+    .priority-score.low { background: rgba(220,252,231,0.8); color: #047857; border: 1px solid #86efac; }
+    .priority-score.minimal { background: rgba(224,242,254,0.8); color: #0369a1; border: 1px solid #7dd3fc; }
+
+    .priority-list-container::-webkit-scrollbar { width: 5px; }
+    .priority-list-container::-webkit-scrollbar-track { background: transparent; }
+    .priority-list-container::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+    .priority-list-container::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+
+    /* Bottom Right: Interactive Legend */
+    .legend-container {
+      position: absolute; bottom: 30px; right: 20px; 
+      padding: 20px; z-index: 1000; width: clamp(220px, 16vw, 280px);
+    }
+    
+    .legend-title { margin: 0 0 4px 0; font-size: 14px; color: #1f2937; font-weight: 700; }
+    .legend-subtitle { margin: 0 0 12px 0; font-size: 11px; color: #6b7280; font-weight: 500; }
+    .legend-content { display: none; }
+    .legend-content.active { display: block; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+    .bivariate-wrapper { display: flex; align-items: flex-end; gap: 10px; }
+    .y-axis-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 10px; color: #6b7280; padding-right: 6px; font-weight: 600; }
+    .x-axis-label { font-size: 10px; color: #6b7280; text-align: center; margin-top: 8px; margin-left: 20px; font-weight: 600; }
+    .bivariate-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 40px); gap: 3px; width: 100%; }
+    .bivariate-grid .box { border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.6); transition: all 0.2s ease; }
+    .bivariate-grid .box:hover { transform: scale(1.05); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); border-color: white; }
+
+    .legend-list { display: flex; flex-direction: column; gap: 10px; }
+    .legend-item { display: flex; align-items: center; font-size: 12px; color: #374151; font-weight: 500; }
+    .color-dot { width: 14px; height: 14px; border-radius: 50%; margin-right: 10px; border: 1px solid rgba(255,255,255,0.5); }
+
+    /* Custom Glass Leaflet Popups */
+    .leaflet-popup-content-wrapper {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.3) 100%) !important;
+      backdrop-filter: blur(var(--glass-blur)) !important;
+      -webkit-backdrop-filter: blur(var(--glass-blur)) !important;
+      border: 1px solid rgba(255, 255, 255, 0.6) !important;
+      box-shadow: var(--glass-shadow) !important;
+      border-radius: 12px !important;
+    }
+    
+    .leaflet-popup-tip {
+      background: rgba(255, 255, 255, 0.5) !important;
+      border: 1px solid rgba(255, 255, 255, 0.6) !important;
+      backdrop-filter: blur(var(--glass-blur)) !important;
+      -webkit-backdrop-filter: blur(var(--glass-blur)) !important;
+    }
+
+    .leaflet-container a.leaflet-popup-close-button {
+      color: #374151 !important;
+      font-weight: bold !important;
+      padding: 4px 4px 0 0 !important;
+    }
+
+    /* Responsive Queries */
+    @media (max-width: 950px) {
+      .app-header { display: none; } /* Hide title on very small screens to save space */
+      .priority-sidebar { max-height: 40vh; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-header glass-panel">
+  <h1>
+    <span style="color: #dc2626;">High Waters,</span> 
+    <span style="color: #d4af37;">Low Budgets</span>
+  </h1>
+  <p>A Spatial-Fiscal Audit of Educational Capital Outlays and Flood Hazards in National Capital Region</p>
+</div>
+
+  <div class="search-controls glass-panel">
+    <div class="search-input-wrapper">
+      <input type="text" id="schoolSearch" placeholder="Search school..." autocomplete="off">
+      <ul id="searchResults" class="search-dropdown"></ul>
+    </div>
+    <button id="searchBtn">Find</button>
+    <button id="zoomNCRBtn" title="Zoom to NCR extent">⛶ NCR</button>
+  </div>
+
+  <div class="combined-controls glass-panel">
+    <h4 class="panel-section-title">Map Mode</h4>
+    <div class="toggle-layout">
+      <span class="mode-label">Bivariate</span>
+      <label class="switch">
+        <input type="checkbox" id="mapToggle">
+        <span class="slider"></span>
+      </label>
+      <span class="mode-label">Moran's I</span>
+    </div>
+    
+    <hr class="panel-divider">
+    
+    <h4 class="panel-section-title">Context Layers</h4>
+    <label class="checkbox-container">
+      <input type="checkbox" id="toggleFlood">
+      <span class="custom-checkbox"></span>
+      Flood Zone
+    </label>
+    <label class="checkbox-container">
+      <input type="checkbox" id="toggleSchools">
+      <span class="custom-checkbox"></span>
+      Public Schools
+    </label>
+  </div>
+
+  <div class="priority-sidebar glass-panel">
+    <div class="priority-header">
+      <h3>Priority Ranking</h3>
+      <p>Flood Risk vs. Budget Allocation</p>
+    </div>
+    <div class="priority-list-container" id="priorityList"></div>
+  </div>
+
+  <div class="legend-container glass-panel">
+    <div id="biv-legend" class="legend-content active">
+      <h4 class="legend-title">Fiscal-Infrastructure Gap</h4>
+      <p class="legend-subtitle">Flood Risk (%) vs. Capital Outlay (₱)</p>
+      <div class="bivariate-wrapper">
+        <span class="y-axis-label">Flood Risk &rarr;</span>
+        <div class="bivariate-grid">
+          <div class="box" style="background: #B22222;" title="High Risk (≥ 65.6%), Low Budget (< ₱31.8M)"></div>
+          <div class="box" style="background: #CD5C5C;" title="High Risk (≥ 65.6%), Med Budget (₱31.8M - ₱63.2M)"></div>
+          <div class="box" style="background: #8B4513;" title="High Risk (≥ 65.6%), High Budget (≥ ₱63.2M)"></div>
+          <div class="box" style="background: #FF6347;" title="Med Risk (42.6% - 65.6%), Low Budget (< ₱31.8M)"></div>
+          <div class="box" style="background: #D4A76A;" title="Med Risk (42.6% - 65.6%), Med Budget (₱31.8M - ₱63.2M)"></div>
+          <div class="box" style="background: #DAA520;" title="Med Risk (42.6% - 65.6%), High Budget (≥ ₱63.2M)"></div>
+          <div class="box" style="background: #F5DEB3;" title="Low Risk (< 42.6%), Low Budget (< ₱31.8M)"></div>
+          <div class="box" style="background: #F0E68C;" title="Low Risk (< 42.6%), Med Budget (₱31.8M - ₱63.2M)"></div>
+          <div class="box" style="background: #FFD700;" title="Low Risk (< 42.6%), High Budget (≥ ₱63.2M)"></div>
+        </div>
+      </div>
+      <div class="x-axis-label">CO Budget Allocation &rarr;</div>
+      <div style="display: flex; justify-content: space-between; margin-left: 20px; font-size: 9px; color: #6b7280; margin-top: 2px;">
+        <span>< ₱31.8M</span><span>₱63.2M+</span>
+      </div>
+    </div>
+
+    <div id="morans-legend" class="legend-content">
+      <h4 class="legend-title">Spatial Clusters</h4>
+      <p class="legend-subtitle">Local Moran's I Analysis</p>
+      <div class="legend-list">
+        <div class="legend-item"><span class="color-dot" style="background: #b91c1c;"></span> High-High Cluster</div>
+        <div class="legend-item"><span class="color-dot" style="background: #1d4ed8;"></span> Low-Low Cluster</div>
+        <div class="legend-item"><span class="color-dot" style="background: #fca5a5;"></span> High-Low Outlier</div>
+        <div class="legend-item"><span class="color-dot" style="background: #93c5fd;"></span> Low-High Outlier</div>
+        <div class="legend-item"><span class="color-dot" style="background: #E0E0E0;"></span> Not Significant</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <script>
+    // Initialize Map
+    const map = L.map('map').setView([14.5995, 121.0366], 11);
+
+    // Clean CartoDB Positron Basemap
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO'
+    }).addTo(map);
+
+    let geojsonLayer;
+    let schoolsLayer;
+    let floodLayer;
+    let cityDataMap = {}; 
+    let ncrBounds = null; 
+
+    // --- ON-THE-FLY BIVARIATE CLASSIFICATION ---
+    function getDynamicBivariateClass(floodRate, budget) {
+      let floodCat = floodRate >= 65.62 ? 'High' : floodRate >= 42.67 ? 'Med' : 'Low';
+      let budgetCat = budget >= 63270420 ? 'High' : budget >= 31843603 ? 'Med' : 'Low';
+      return floodCat + '-' + budgetCat;
+    }
+
+    // --- COLOR ASSIGNMENTS ---
+    function getBivariateColor(value) {
+      return value === 'High-High' ? '#8B4513' : value === 'High-Med'  ? '#CD5C5C' : value === 'High-Low'  ? '#B22222' : 
+             value === 'Med-High'  ? '#DAA520' : value === 'Med-Med'   ? '#D4A76A' : value === 'Med-Low'   ? '#FF6347' : 
+             value === 'Low-High'  ? '#FFD700' : value === 'Low-Med'   ? '#F0E68C' : value === 'Low-Low'   ? '#F5DEB3' : '#cccccc';
+    }
+
+    function getMoransColor(value) {
+      return value === 'High-High' ? '#b91c1c' : value === 'Low-Low'   ? '#1d4ed8' : value === 'High-Low'  ? '#fca5a5' : 
+             value === 'Low-High'  ? '#93c5fd' : value === 'Not Significant' ? '#E0E0E0' : '#cccccc'; 
+    }
+
+    function getRiskLevel(floodRate) {
+      if (floodRate >= 65.62) return { level: 'High Risk', color: '#b91c1c' };
+      if (floodRate >= 42.67) return { level: 'Medium Risk', color: '#f59e0b' };
+      return { level: 'Low Risk', color: '#22c55e' };
+    }
+
+    function getGapClassification(floodRate, budget) {
+      let floodCat = floodRate >= 65.62 ? 'High' : floodRate >= 42.67 ? 'Medium' : 'Low';
+      let budgetCat = budget >= 63270420 ? 'High' : budget >= 31843603 ? 'Medium' : 'Low';
+      return `${floodCat} Flood Risk / ${budgetCat} Budget`;
+    }
+
+    // --- STYLE APPLICATORS ---
+    function styleBivariate(feature) {
+      const floodVal = parseFloat(feature.properties.Flood_Rate);
+      const budgetVal = parseFloat(feature.properties.Budget); 
+      const bivClass = getDynamicBivariateClass(floodVal, budgetVal);
+      return { fillColor: getBivariateColor(bivClass), weight: 1, color: 'white', fillOpacity: 0.85 };
+    }
+
+    function styleMorans(feature) {
+      return { fillColor: getMoransColor(feature.properties.Quad_Type), weight: 1, color: 'white', fillOpacity: 0.85 };
+    }
+
+    // --- DATA LOADING (MAIN MAP WITH CITY POPUPS) ---
+    fetch('ncr_data.geojson')
+      .then(response => response.json())
+      .then(data => {
+        data.features.forEach(feature => {
+          const cityName = feature.properties.ADM3_EN_2;
+          cityDataMap[cityName] = {
+            floodRate: feature.properties.Flood_Rate,
+            budget: feature.properties['2024 BUDGE'],
+            quadType: feature.properties.Quad_Type
+          };
+        });
+
+        let bounds = null;
+        data.features.forEach(feature => {
+          const bbox = L.geoJSON(feature).getBounds();
+          if (bounds === null) bounds = bbox;
+          else bounds.extend(bbox);
+        });
+        ncrBounds = bounds;
+
+        // --- PRIORITY RANKING CALCULATION ---
+        function calculatePriorityScore(floodRate, budget) {
+          const normalizedFlood = Math.min(Math.max(floodRate / 100, 0), 1);
+          const maxBudget = 100000000;
+          const normalizedBudget = 1 - Math.min(Math.max(budget / maxBudget, 0), 1);
+          return normalizedFlood * 0.7 + normalizedBudget * 0.3;
+        }
+
+        function getPriorityLabel(score) {
+          if (score >= 0.75) return { label: 'Critical', class: 'critical' };
+          if (score >= 0.6) return { label: 'High', class: 'high' };
+          if (score >= 0.45) return { label: 'Medium', class: 'medium' };
+          if (score >= 0.3) return { label: 'Low', class: 'low' };
+          return { label: 'Minimal', class: 'minimal' };
+        }
+
+        function formatFloodRate(rate) {
+          if (rate >= 65.62) return 'High';
+          if (rate >= 42.67) return 'Med';
+          return 'Low';
+        }
+
+        function formatBudget(budget) {
+          if (budget >= 63270420) return 'High';
+          if (budget >= 31843603) return 'Med';
+          return 'Low';
+        }
+
+        let ranking = [];
+        data.features.forEach((feature, index) => {
+          const cityName = feature.properties.ADM3_EN_2;
+          const floodRate = parseFloat(feature.properties.Flood_Rate);
+          const budget = parseFloat(feature.properties['2024 BUDGE']);
+          const score = calculatePriorityScore(floodRate, budget);
+          
+          ranking.push({
+            rank: 0, cityName: cityName, floodRate: floodRate, budget: budget,
+            score: score, priorityLabel: getPriorityLabel(score), feature: feature
+          });
+        });
+
+        ranking.sort((a, b) => b.score - a.score);
+        ranking.forEach((item, index) => { item.rank = index + 1; });
+
+        const priorityListDiv = document.getElementById('priorityList');
+        const headerRow = document.createElement('div');
+        headerRow.className = 'priority-column-headers';
+        headerRow.innerHTML = `
+          <div class="priority-col-header">Rnk</div>
+          <div class="priority-col-header">City</div>
+          <div class="priority-col-header">Risk</div>
+          <div class="priority-col-header">Budget</div>
+          <div class="priority-col-header">Priority</div>
+        `;
+        priorityListDiv.appendChild(headerRow);
+        
+        ranking.forEach(item => {
+          const row = document.createElement('div');
+          row.className = 'priority-row';
+          row.dataset.cityName = item.cityName;
+          row.innerHTML = `
+            <div class="priority-rank">${item.rank}</div>
+            <div class="priority-city">${item.cityName}</div>
+            <div class="priority-cell">${formatFloodRate(item.floodRate)}</div>
+            <div class="priority-cell">${formatBudget(item.budget)}</div>
+            <div class="priority-score ${item.priorityLabel.class}">${item.priorityLabel.label}</div>
+          `;
+          
+          row.addEventListener('click', function() {
+            document.querySelectorAll('.priority-row.highlighted').forEach(r => r.classList.remove('highlighted'));
+            row.classList.add('highlighted');
+            
+            if (geojsonLayer) {
+              geojsonLayer.eachLayer(function(layer) {
+                if (layer.feature.properties.ADM3_EN_2 === item.cityName) {
+                  const bounds = L.geoJSON(layer.feature).getBounds();
+                  map.fitBounds(bounds, { padding: [80, 80], animate: true });
+                  layer.openPopup();
+                }
+              });
+            }
+          });
+          priorityListDiv.appendChild(row);
+        });
+
+        window.cityRanking = ranking;
+
+        geojsonLayer = L.geoJSON(data, { 
+          style: styleBivariate,
+          onEachFeature: function(feature, layer) {
+            const cityName = feature.properties.ADM3_EN_2 || "Unknown City";
+            const floodRate = parseFloat(feature.properties.Flood_Rate);
+            const budget = parseFloat(feature.properties.Budget);
+            const quadType = feature.properties.Quad_Type || "Not Significant";
+            
+            const floodDisplay = isNaN(floodRate) ? "N/A" : floodRate.toFixed(1) + "%";
+            const budgetDisplay = isNaN(budget) ? "N/A" : "₱" + budget.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+            
+            let fStr = floodRate >= 65.62 ? 'High Risk' : floodRate >= 42.67 ? 'Med Risk' : 'Low Risk';
+            let bStr = budget >= 63270420 ? 'High Budget' : budget >= 31843603 ? 'Med Budget' : 'Low Budget';
+            let gapClass = `${fStr} / ${bStr}`;
+
+            const popupContent = `
+              <div style="min-width: 180px; font-family: 'Segoe UI', Arial, sans-serif;">
+                <h4 style="margin: 0 0 8px 0; color: #1f2937; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 4px;">${cityName}</h4>
+                <div style="font-size: 13px; color: #374151;">
+                  <p style="margin: 4px 0;"><b>Flood Risk:</b> ${floodDisplay}</p>
+                  <p style="margin: 4px 0;"><b>CO Budget:</b> ${budgetDisplay}</p>
+                  <p style="margin: 4px 0; color: #1e3a8a; font-weight: 600;"><b>Analysis:</b> ${gapClass}</p>
+                  <p style="margin: 4px 0;"><b>Moran's I:</b> ${quadType}</p>
+                </div>
+              </div>
+            `;
+            layer.bindPopup(popupContent);
+            
+            layer.on('click', function() {
+              document.querySelectorAll('.priority-row.highlighted').forEach(r => r.classList.remove('highlighted'));
+              const priorityRow = document.querySelector(`[data-city-name="${cityName}"]`);
+              if (priorityRow) {
+                priorityRow.classList.add('highlighted');
+                priorityRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }
+            });
+          }
+        }).addTo(map);
+      })
+      .catch(error => console.error("Error loading Main GeoJSON data:", error));
+
+    // --- DATA LOADING (CONTEXT LAYERS & POPUPS) ---
+    fetch('flood.geojson')
+      .then(response => response.json())
+      .then(data => {
+        floodLayer = L.geoJSON(data, {
+          style: { fillColor: '#3b82f6', color: '#1d4ed8', weight: 1, fillOpacity: 0.35 }
+        });
+      }).catch(error => console.error("Error loading Flood GeoJSON:", error));
+
+    fetch('schools.geojson')
+      .then(response => response.json())
+      .then(data => {
+        schoolsLayer = L.geoJSON(data, {
+          pointToLayer: function (feature, latlng) {
+            const name = feature.properties["Mandaluyong Addition Hills Elementary School"] || "Unknown School";
+            const city = feature.properties["City of Mandaluyong"] || "Unknown City";
+            
+            const cityData = cityDataMap[city];
+            const floodRate = cityData ? cityData.floodRate : null;
+            const budget = cityData ? cityData.budget : null;
+            const quadType = cityData ? cityData.quadType : null;
+            
+            let popupHTML = `
+              <div style="min-width: 220px; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;">
+                <h4 style="margin: 0 0 8px 0; color: #1f2937; border-bottom: 2px solid rgba(59, 73, 148, 0.5); padding-bottom: 6px; font-size: 14px;">${name}</h4>
+                <p style="margin: 4px 0; color: #4b5563;"><b>📍 City:</b> ${city}</p>
+            `;
+            
+            if (floodRate !== null) {
+              const riskInfo = getRiskLevel(floodRate);
+              const gapClass = getGapClassification(floodRate, budget);
+              const budgetDisplay = new Intl.NumberFormat('en-PH', {style: 'currency', currency: 'PHP', minimumFractionDigits: 0}).format(budget);
+              
+              popupHTML += `
+                <div style="background: rgba(255, 255, 255, 0.4); border: 1px solid rgba(255, 255, 255, 0.5); padding: 8px; border-radius: 6px; margin: 8px 0; border-left: 3px solid ${riskInfo.color};">
+                  <p style="margin: 2px 0; color: #374151;"><b>🌊 Flood Risk:</b> <span style="color: ${riskInfo.color}; font-weight: 600;">${floodRate.toFixed(1)}%</span></p>
+                  <p style="margin: 2px 0; color: #374151;"><b style="color: ${riskInfo.color};">${riskInfo.level}</b></p>
+                  <p style="margin: 4px 0; color: #374151;"><b>💰 City-Wide Budget:</b> ${budgetDisplay}</p>
+                  <p style="margin: 2px 0; font-size: 11px; color: #6b7280;"><i>(2024 Capital Outlay Allocation)</i></p>
+                  <p style="margin: 4px 0; color: #1e3a8a; font-weight: 600; font-size: 12px;"><b>📊 Fiscal-Infrastructure Gap:</b> ${gapClass}</p>
+                  <p style="margin: 4px 0; color: #6b7280; font-size: 11px;"><b>Moran's I:</b> ${quadType}</p>
+                </div>
+                <p style="margin: 4px 0; font-size: 11px; color: #6b7280; font-style: italic;">Risk & budget data based on city-level statistics</p>
+              `;
+            } else {
+              popupHTML += `<p style="color: #ef4444; margin: 4px 0;">ⓘ Risk data not available</p>`;
+            }
+            
+            popupHTML += `</div>`;
+            const marker = L.circleMarker(latlng, { radius: 3.5, fillColor: '#D1FFB0', color: '#0C2C06', weight: 1, fillOpacity: 0.75 });
+            marker.bindPopup(popupHTML);
+            return marker;
+          }
+        });
+
+        // --- SEARCH AUTOCOMPLETE & DROPDOWN LOGIC ---
+        const searchInput = document.getElementById('schoolSearch');
+        const searchResults = document.getElementById('searchResults');
+        const searchBtn = document.getElementById('searchBtn');
+
+        searchInput.addEventListener('input', function() {
+          const query = this.value.toLowerCase();
+          searchResults.innerHTML = ''; 
+          if (query.length < 2) { searchResults.style.display = 'none'; return; }
+
+          let matchCount = 0;
+          schoolsLayer.eachLayer(function(layer) {
+            const schoolName = layer.feature.properties["Mandaluyong Addition Hills Elementary School"] || ""; 
+            if (schoolName.toLowerCase().includes(query) && matchCount < 10) {
+              const li = document.createElement('li');
+              li.textContent = schoolName;
+              li.addEventListener('click', function() {
+                searchInput.value = schoolName; 
+                searchResults.style.display = 'none'; 
+                if (!document.getElementById('toggleSchools').checked) {
+                   document.getElementById('toggleSchools').click();
+                }
+                map.flyTo(layer.getLatLng(), 16, { animate: true, duration: 1.5 });
+                layer.openPopup();
+              });
+              searchResults.appendChild(li);
+              matchCount++;
+            }
+          });
+
+          if (matchCount > 0) { searchResults.style.display = 'block'; } 
+          else {
+            const li = document.createElement('li');
+            li.textContent = "No matches found";
+            li.style.color = "#9ca3af"; li.style.cursor = "default";
+            searchResults.appendChild(li); searchResults.style.display = 'block';
+          }
+        });
+
+        document.addEventListener('click', function(e) {
+          if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+            searchResults.style.display = 'none';
+          }
+        });
+
+        searchBtn.addEventListener('click', function() {
+          const query = searchInput.value.toLowerCase();
+          if (!query) return;
+
+          let found = false;
+          schoolsLayer.eachLayer(function(layer) {
+            const schoolName = layer.feature.properties["Mandaluyong Addition Hills Elementary School"] || ""; 
+            if (schoolName.toLowerCase() === query || schoolName.toLowerCase().includes(query)) {
+              if (!document.getElementById('toggleSchools').checked) {
+                 document.getElementById('toggleSchools').click();
+              }
+              map.flyTo(layer.getLatLng(), 16, { animate: true, duration: 1.5 });
+              layer.openPopup();
+              found = true;
+              searchResults.style.display = 'none';
+            }
+          });
+          if (!found) alert("School not found. Please try picking from the dropdown list.");
+        });
+      }).catch(error => console.error("Error loading Schools GeoJSON:", error));
+
+    // --- INTERACTIVE TOGGLE LOGIC (CONTEXT LAYERS) ---
+    document.getElementById('toggleFlood').addEventListener('change', function() {
+      if (this.checked && floodLayer) map.addLayer(floodLayer);
+      else if (floodLayer) map.removeLayer(floodLayer);
+    });
+
+    document.getElementById('toggleSchools').addEventListener('change', function() {
+      if (this.checked && schoolsLayer) {
+        map.addLayer(schoolsLayer);
+        schoolsLayer.bringToFront();
+      }
+      else if (schoolsLayer) map.removeLayer(schoolsLayer);
+    });
+
+    // --- ZOOM TO NCR BUTTON ---
+    document.getElementById('zoomNCRBtn').addEventListener('click', function() {
+      if (ncrBounds) map.fitBounds(ncrBounds, { padding: [50, 50], animate: true });
+    });
+
+    // --- INTERACTIVE TOGGLE LOGIC (MAIN ANALYSIS) ---
+    const bivLegend = document.getElementById('biv-legend');
+    const moransLegend = document.getElementById('morans-legend');
+
+    document.getElementById('mapToggle').addEventListener('change', function() {
+      if (!geojsonLayer) return; 
+      if (this.checked) {
+        geojsonLayer.setStyle(styleMorans);
+        bivLegend.classList.remove('active');
+        moransLegend.classList.add('active');
+      } else {
+        geojsonLayer.setStyle(styleBivariate);
+        moransLegend.classList.remove('active');
+        bivLegend.classList.add('active');
+      }
+    });
+  </script>
+
+</body>
+</html>
