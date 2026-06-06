@@ -8,7 +8,6 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   
   <style>
-    /* Premium Glassmorphism Variables & Class */
     :root {
       --glass-blur: 20px;
       --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
@@ -41,7 +40,6 @@
     }
     #map { width: 100vw; height: 100vh; z-index: 1; }
     
-    /* Center Title Card */
     .app-header {
       position: absolute;
       top: 15px;
@@ -56,7 +54,6 @@
     .app-header h1 { margin: 0; font-size: 18px; color: #1f2937; letter-spacing: 0.5px; }
     .app-header p { margin: 4px 0 0 0; font-size: 12px; color: #374151; font-weight: 500; }
 
-    /* Top Left: Search Bar */
     .search-controls {
       position: absolute;
       top: 15px;
@@ -75,7 +72,7 @@
     .search-input-wrapper input:focus { 
       border-color: #3b4994; background: white;
       box-shadow: 0 0 0 3px rgba(59, 73, 148, 0.1);
-      width: 180px; /* expands slightly when typing */
+      width: 180px;
     }
     
     .search-dropdown {
@@ -100,7 +97,6 @@
     #zoomNCRBtn { background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 8px 14px; font-size: 12px; }
     #zoomNCRBtn:hover { background: linear-gradient(135deg, #047857 0%, #065f46 100%); }
 
-    /* Top Right: Combined Control Panel */
     .combined-controls {
       position: absolute;
       top: 15px; 
@@ -155,7 +151,6 @@
     }
     .checkbox-container input:checked ~ .custom-checkbox:after { display: block; }
 
-    /* Bottom Left: Priority Ranking Sidebar */
     .priority-sidebar {
       position: fixed;
       left: 20px;
@@ -177,7 +172,6 @@
     .priority-header h3 { margin: 0 0 4px 0; font-size: 14px; font-weight: 700; }
     .priority-header p { margin: 0; font-size: 11px; opacity: 0.9; font-weight: 500; }
 
-    /* Fixed Table Layout for Priority List */
     .priority-list-container {
       flex: 1;
       overflow-y: auto;
@@ -251,7 +245,6 @@
     .priority-list-container::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
     .priority-list-container::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
 
-    /* Bottom Right: Interactive Legend */
     .legend-container {
       position: absolute; bottom: 30px; right: 20px; 
       padding: 20px; z-index: 1000; width: clamp(220px, 16vw, 280px);
@@ -274,7 +267,6 @@
     .legend-item { display: flex; align-items: center; font-size: 12px; color: #374151; font-weight: 500; }
     .color-dot { width: 14px; height: 14px; border-radius: 50%; margin-right: 10px; border: 1px solid rgba(255,255,255,0.5); }
 
-    /* Custom Glass Leaflet Popups */
     .leaflet-popup-content-wrapper {
       background: linear-gradient(135deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.3) 100%) !important;
       backdrop-filter: blur(var(--glass-blur)) !important;
@@ -297,9 +289,8 @@
       padding: 4px 4px 0 0 !important;
     }
 
-    /* Responsive Queries */
     @media (max-width: 950px) {
-      .app-header { display: none; } /* Hide title on very small screens to save space */
+      .app-header { display: none; }
       .priority-sidebar { max-height: 40vh; }
     }
   </style>
@@ -400,10 +391,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
   <script>
-    // Initialize Map
     const map = L.map('map').setView([14.5995, 121.0366], 11);
 
-    // Clean CartoDB Positron Basemap
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OpenStreetMap &copy; CARTO'
     }).addTo(map);
@@ -414,14 +403,12 @@
     let cityDataMap = {}; 
     let ncrBounds = null; 
 
-    // --- ON-THE-FLY BIVARIATE CLASSIFICATION ---
     function getDynamicBivariateClass(floodRate, budget) {
       let floodCat = floodRate >= 65.62 ? 'High' : floodRate >= 42.67 ? 'Med' : 'Low';
       let budgetCat = budget >= 63270420 ? 'High' : budget >= 31843603 ? 'Med' : 'Low';
       return floodCat + '-' + budgetCat;
     }
 
-    // --- COLOR ASSIGNMENTS ---
     function getBivariateColor(value) {
       return value === 'High-High' ? '#8B4513' : value === 'High-Med'  ? '#CD5C5C' : value === 'High-Low'  ? '#B22222' : 
              value === 'Med-High'  ? '#DAA520' : value === 'Med-Med'   ? '#D4A76A' : value === 'Med-Low'   ? '#FF6347' : 
@@ -445,7 +432,6 @@
       return `${floodCat} Flood Risk / ${budgetCat} Budget`;
     }
 
-    // --- STYLE APPLICATORS ---
     function styleBivariate(feature) {
       const floodVal = parseFloat(feature.properties.Flood_Rate);
       const budgetVal = parseFloat(feature.properties.Budget); 
@@ -457,7 +443,6 @@
       return { fillColor: getMoransColor(feature.properties.Quad_Type), weight: 1, color: 'white', fillOpacity: 0.85 };
     }
 
-    // --- LOAD FLOOD LAYER FIRST (Independent) ---
     fetch('flood.geojson')
       .then(response => response.json())
       .then(data => {
@@ -466,12 +451,10 @@
         });
       }).catch(error => console.error("Error loading Flood GeoJSON:", error));
 
-    // --- DATA LOADING (NCR DATA MUST LOAD BEFORE SCHOOLS) ---
     fetch('ncr_data.geojson')
       .then(response => response.json())
       .then(data => {
         
-        // 1. Build Dictionary of Risk Data
         data.features.forEach(feature => {
           const cityName = feature.properties.ADM3_EN_2;
           cityDataMap[cityName] = {
@@ -481,7 +464,6 @@
           };
         });
 
-        // 2. Setup Bounds
         let bounds = null;
         data.features.forEach(feature => {
           const bbox = L.geoJSON(feature).getBounds();
@@ -490,7 +472,6 @@
         });
         ncrBounds = bounds;
 
-        // 3. Priority Ranking Calculation
         function calculatePriorityScore(floodRate, budget) {
           const normalizedFlood = Math.min(Math.max(floodRate / 100, 0), 1);
           const maxBudget = 100000000;
@@ -615,10 +596,7 @@
             });
           }
         }).addTo(map);
-
-        // =====================================================================
-        // NOW FETCH SCHOOLS (Ensures cityDataMap is fully loaded first!)
-        // =====================================================================
+        
         fetch('schools.geojson')
           .then(response => response.json())
           .then(schoolData => {
@@ -627,7 +605,6 @@
                 const name = feature.properties["Mandaluyong Addition Hills Elementary School"] || "Unknown School";
                 const city = feature.properties["City of Mandaluyong"] || "Unknown City";
                 
-                // Robust City Matching (fixes slight name differences like "City of Marikina" vs "Marikina City")
                 let baseCity = city.replace(/City of /i, '').replace(/ City/i, '').trim();
                 let cityData = cityDataMap[city] || cityDataMap[baseCity] || cityDataMap[baseCity + " City"] || cityDataMap["City of " + baseCity];
                 
@@ -662,14 +639,12 @@
                 }
                 
                 popupHTML += `</div>`;
-                // Applied the luminous mint green with a dark outline for high visibility!
                 const marker = L.circleMarker(latlng, { radius: 3.5, fillColor: '#D1FFB0', color: '#0C2C06', weight: 1.5, fillOpacity: 0.75 });
                 marker.bindPopup(popupHTML);
                 return marker;
               }
             });
 
-            // --- SEARCH AUTOCOMPLETE LOGIC ---
             const searchInput = document.getElementById('schoolSearch');
             const searchResults = document.getElementById('searchResults');
             const searchBtn = document.getElementById('searchBtn');
@@ -739,7 +714,6 @@
       })
       .catch(error => console.error("Error loading Main GeoJSON data:", error));
 
-    // --- INTERACTIVE TOGGLE LOGIC (CONTEXT LAYERS) ---
     document.getElementById('toggleFlood').addEventListener('change', function() {
       if (this.checked && floodLayer) map.addLayer(floodLayer);
       else if (floodLayer) map.removeLayer(floodLayer);
@@ -753,12 +727,10 @@
       else if (schoolsLayer) map.removeLayer(schoolsLayer);
     });
 
-    // --- ZOOM TO NCR BUTTON ---
     document.getElementById('zoomNCRBtn').addEventListener('click', function() {
       if (ncrBounds) map.fitBounds(ncrBounds, { padding: [50, 50], animate: true });
     });
 
-    // --- INTERACTIVE TOGGLE LOGIC (MAIN ANALYSIS) ---
     const bivLegend = document.getElementById('biv-legend');
     const moransLegend = document.getElementById('morans-legend');
 
