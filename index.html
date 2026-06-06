@@ -655,7 +655,7 @@
             }
             
             popupHTML += `</div>`;
-            const marker = L.circleMarker(latlng, { radius: 3.5, fillColor: '#D1FFB0', color: '#0C2C06', weight: 1, fillOpacity: 0.75 });
+            const marker = L.circleMarker(latlng, { radius: 3.5, fillColor: '#D1FFB0', color: '#0C2C06', weight: 1, fillOpacity: 1 });
             marker.bindPopup(popupHTML);
             return marker;
           }
