@@ -457,10 +457,21 @@
       return { fillColor: getMoransColor(feature.properties.Quad_Type), weight: 1, color: 'white', fillOpacity: 0.85 };
     }
 
-    // --- DATA LOADING (MAIN MAP WITH CITY POPUPS) ---
+    // --- LOAD FLOOD LAYER FIRST (Independent) ---
+    fetch('flood.geojson')
+      .then(response => response.json())
+      .then(data => {
+        floodLayer = L.geoJSON(data, {
+          style: { fillColor: '#3b82f6', color: '#1d4ed8', weight: 1, fillOpacity: 0.35 }
+        });
+      }).catch(error => console.error("Error loading Flood GeoJSON:", error));
+
+    // --- DATA LOADING (NCR DATA MUST LOAD BEFORE SCHOOLS) ---
     fetch('ncr_data.geojson')
       .then(response => response.json())
       .then(data => {
+        
+        // 1. Build Dictionary of Risk Data
         data.features.forEach(feature => {
           const cityName = feature.properties.ADM3_EN_2;
           cityDataMap[cityName] = {
@@ -470,6 +481,7 @@
           };
         });
 
+        // 2. Setup Bounds
         let bounds = null;
         data.features.forEach(feature => {
           const bbox = L.geoJSON(feature).getBounds();
@@ -478,7 +490,7 @@
         });
         ncrBounds = bounds;
 
-        // --- PRIORITY RANKING CALCULATION ---
+        // 3. Priority Ranking Calculation
         function calculatePriorityScore(floodRate, budget) {
           const normalizedFlood = Math.min(Math.max(floodRate / 100, 0), 1);
           const maxBudget = 100000000;
@@ -603,129 +615,129 @@
             });
           }
         }).addTo(map);
+
+        // =====================================================================
+        // NOW FETCH SCHOOLS (Ensures cityDataMap is fully loaded first!)
+        // =====================================================================
+        fetch('schools.geojson')
+          .then(response => response.json())
+          .then(schoolData => {
+            schoolsLayer = L.geoJSON(schoolData, {
+              pointToLayer: function (feature, latlng) {
+                const name = feature.properties["Mandaluyong Addition Hills Elementary School"] || "Unknown School";
+                const city = feature.properties["City of Mandaluyong"] || "Unknown City";
+                
+                // Robust City Matching (fixes slight name differences like "City of Marikina" vs "Marikina City")
+                let baseCity = city.replace(/City of /i, '').replace(/ City/i, '').trim();
+                let cityData = cityDataMap[city] || cityDataMap[baseCity] || cityDataMap[baseCity + " City"] || cityDataMap["City of " + baseCity];
+                
+                const floodRate = cityData ? cityData.floodRate : null;
+                const budget = cityData ? cityData.budget : null;
+                const quadType = cityData ? cityData.quadType : null;
+                
+                let popupHTML = `
+                  <div style="min-width: 220px; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;">
+                    <h4 style="margin: 0 0 8px 0; color: #1f2937; border-bottom: 2px solid rgba(59, 73, 148, 0.5); padding-bottom: 6px; font-size: 14px;">${name}</h4>
+                    <p style="margin: 4px 0; color: #4b5563;"><b>📍 City:</b> ${city}</p>
+                `;
+                
+                if (floodRate !== null && floodRate !== undefined && !isNaN(floodRate)) {
+                  const riskInfo = getRiskLevel(floodRate);
+                  const gapClass = getGapClassification(floodRate, budget);
+                  const budgetDisplay = new Intl.NumberFormat('en-PH', {style: 'currency', currency: 'PHP', minimumFractionDigits: 0}).format(budget);
+                  
+                  popupHTML += `
+                    <div style="background: rgba(255, 255, 255, 0.4); border: 1px solid rgba(255, 255, 255, 0.5); padding: 8px; border-radius: 6px; margin: 8px 0; border-left: 3px solid ${riskInfo.color};">
+                      <p style="margin: 2px 0; color: #374151;"><b>🌊 Flood Risk:</b> <span style="color: ${riskInfo.color}; font-weight: 600;">${parseFloat(floodRate).toFixed(1)}%</span></p>
+                      <p style="margin: 2px 0; color: #374151;"><b style="color: ${riskInfo.color};">${riskInfo.level}</b></p>
+                      <p style="margin: 4px 0; color: #374151;"><b>💰 City-Wide Budget:</b> ${budgetDisplay}</p>
+                      <p style="margin: 2px 0; font-size: 11px; color: #6b7280;"><i>(2024 Capital Outlay Allocation)</i></p>
+                      <p style="margin: 4px 0; color: #1e3a8a; font-weight: 600; font-size: 12px;"><b>📊 Fiscal-Infrastructure Gap:</b> ${gapClass}</p>
+                      <p style="margin: 4px 0; color: #6b7280; font-size: 11px;"><b>Moran's I:</b> ${quadType}</p>
+                    </div>
+                    <p style="margin: 4px 0; font-size: 11px; color: #6b7280; font-style: italic;">Risk & budget data based on city-level statistics</p>
+                  `;
+                } else {
+                  popupHTML += `<p style="color: #ef4444; margin: 4px 0; padding: 8px; background: rgba(255,255,255,0.5); border-radius: 4px;">ⓘ Risk data not available for ${city}</p>`;
+                }
+                
+                popupHTML += `</div>`;
+                // Applied the luminous mint green with a dark outline for high visibility!
+                const marker = L.circleMarker(latlng, { radius: 4.5, fillColor: '#10B981', color: '#1f2937', weight: 1.5, fillOpacity: 0.9 });
+                marker.bindPopup(popupHTML);
+                return marker;
+              }
+            });
+
+            // --- SEARCH AUTOCOMPLETE LOGIC ---
+            const searchInput = document.getElementById('schoolSearch');
+            const searchResults = document.getElementById('searchResults');
+            const searchBtn = document.getElementById('searchBtn');
+
+            searchInput.addEventListener('input', function() {
+              const query = this.value.toLowerCase();
+              searchResults.innerHTML = ''; 
+              if (query.length < 2) { searchResults.style.display = 'none'; return; }
+
+              let matchCount = 0;
+              schoolsLayer.eachLayer(function(layer) {
+                const schoolName = layer.feature.properties["Mandaluyong Addition Hills Elementary School"] || ""; 
+                if (schoolName.toLowerCase().includes(query) && matchCount < 10) {
+                  const li = document.createElement('li');
+                  li.textContent = schoolName;
+                  li.addEventListener('click', function() {
+                    searchInput.value = schoolName; 
+                    searchResults.style.display = 'none'; 
+                    if (!document.getElementById('toggleSchools').checked) {
+                       document.getElementById('toggleSchools').click();
+                    }
+                    map.flyTo(layer.getLatLng(), 16, { animate: true, duration: 1.5 });
+                    layer.openPopup();
+                  });
+                  searchResults.appendChild(li);
+                  matchCount++;
+                }
+              });
+
+              if (matchCount > 0) { searchResults.style.display = 'block'; } 
+              else {
+                const li = document.createElement('li');
+                li.textContent = "No matches found";
+                li.style.color = "#9ca3af"; li.style.cursor = "default";
+                searchResults.appendChild(li); searchResults.style.display = 'block';
+              }
+            });
+
+            document.addEventListener('click', function(e) {
+              if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                searchResults.style.display = 'none';
+              }
+            });
+
+            searchBtn.addEventListener('click', function() {
+              const query = searchInput.value.toLowerCase();
+              if (!query) return;
+
+              let found = false;
+              schoolsLayer.eachLayer(function(layer) {
+                const schoolName = layer.feature.properties["Mandaluyong Addition Hills Elementary School"] || ""; 
+                if (schoolName.toLowerCase() === query || schoolName.toLowerCase().includes(query)) {
+                  if (!document.getElementById('toggleSchools').checked) {
+                     document.getElementById('toggleSchools').click();
+                  }
+                  map.flyTo(layer.getLatLng(), 16, { animate: true, duration: 1.5 });
+                  layer.openPopup();
+                  found = true;
+                  searchResults.style.display = 'none';
+                }
+              });
+              if (!found) alert("School not found. Please try picking from the dropdown list.");
+            });
+          })
+          .catch(error => console.error("Error loading Schools GeoJSON:", error));
+
       })
       .catch(error => console.error("Error loading Main GeoJSON data:", error));
-
-    // --- DATA LOADING (CONTEXT LAYERS & POPUPS) ---
-    fetch('flood.geojson')
-      .then(response => response.json())
-      .then(data => {
-        floodLayer = L.geoJSON(data, {
-          style: { fillColor: '#3b82f6', color: '#1d4ed8', weight: 1, fillOpacity: 0.35 }
-        });
-      }).catch(error => console.error("Error loading Flood GeoJSON:", error));
-
-    fetch('schools.geojson')
-      .then(response => response.json())
-      .then(data => {
-        schoolsLayer = L.geoJSON(data, {
-          pointToLayer: function (feature, latlng) {
-            const name = feature.properties["Mandaluyong Addition Hills Elementary School"] || "Unknown School";
-            const city = feature.properties["City of Mandaluyong"] || "Unknown City";
-            
-            const cityData = cityDataMap[city];
-            const floodRate = cityData ? cityData.floodRate : null;
-            const budget = cityData ? cityData.budget : null;
-            const quadType = cityData ? cityData.quadType : null;
-            
-            let popupHTML = `
-              <div style="min-width: 220px; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;">
-                <h4 style="margin: 0 0 8px 0; color: #1f2937; border-bottom: 2px solid rgba(59, 73, 148, 0.5); padding-bottom: 6px; font-size: 14px;">${name}</h4>
-                <p style="margin: 4px 0; color: #4b5563;"><b>📍 City:</b> ${city}</p>
-            `;
-            
-            if (floodRate !== null) {
-              const riskInfo = getRiskLevel(floodRate);
-              const gapClass = getGapClassification(floodRate, budget);
-              const budgetDisplay = new Intl.NumberFormat('en-PH', {style: 'currency', currency: 'PHP', minimumFractionDigits: 0}).format(budget);
-              
-              popupHTML += `
-                <div style="background: rgba(255, 255, 255, 0.4); border: 1px solid rgba(255, 255, 255, 0.5); padding: 8px; border-radius: 6px; margin: 8px 0; border-left: 3px solid ${riskInfo.color};">
-                  <p style="margin: 2px 0; color: #374151;"><b>🌊 Flood Risk:</b> <span style="color: ${riskInfo.color}; font-weight: 600;">${floodRate.toFixed(1)}%</span></p>
-                  <p style="margin: 2px 0; color: #374151;"><b style="color: ${riskInfo.color};">${riskInfo.level}</b></p>
-                  <p style="margin: 4px 0; color: #374151;"><b>💰 City-Wide Budget:</b> ${budgetDisplay}</p>
-                  <p style="margin: 2px 0; font-size: 11px; color: #6b7280;"><i>(2024 Capital Outlay Allocation)</i></p>
-                  <p style="margin: 4px 0; color: #1e3a8a; font-weight: 600; font-size: 12px;"><b>📊 Fiscal-Infrastructure Gap:</b> ${gapClass}</p>
-                  <p style="margin: 4px 0; color: #6b7280; font-size: 11px;"><b>Moran's I:</b> ${quadType}</p>
-                </div>
-                <p style="margin: 4px 0; font-size: 11px; color: #6b7280; font-style: italic;">Risk & budget data based on city-level statistics</p>
-              `;
-            } else {
-              popupHTML += `<p style="color: #ef4444; margin: 4px 0;">ⓘ Risk data not available</p>`;
-            }
-            
-            popupHTML += `</div>`;
-            const marker = L.circleMarker(latlng, { radius: 3.5, fillColor: '#D1FFB0', color: '#0C2C06', weight: 1, fillOpacity: 1 });
-            marker.bindPopup(popupHTML);
-            return marker;
-          }
-        });
-
-        // --- SEARCH AUTOCOMPLETE & DROPDOWN LOGIC ---
-        const searchInput = document.getElementById('schoolSearch');
-        const searchResults = document.getElementById('searchResults');
-        const searchBtn = document.getElementById('searchBtn');
-
-        searchInput.addEventListener('input', function() {
-          const query = this.value.toLowerCase();
-          searchResults.innerHTML = ''; 
-          if (query.length < 2) { searchResults.style.display = 'none'; return; }
-
-          let matchCount = 0;
-          schoolsLayer.eachLayer(function(layer) {
-            const schoolName = layer.feature.properties["Mandaluyong Addition Hills Elementary School"] || ""; 
-            if (schoolName.toLowerCase().includes(query) && matchCount < 10) {
-              const li = document.createElement('li');
-              li.textContent = schoolName;
-              li.addEventListener('click', function() {
-                searchInput.value = schoolName; 
-                searchResults.style.display = 'none'; 
-                if (!document.getElementById('toggleSchools').checked) {
-                   document.getElementById('toggleSchools').click();
-                }
-                map.flyTo(layer.getLatLng(), 16, { animate: true, duration: 1.5 });
-                layer.openPopup();
-              });
-              searchResults.appendChild(li);
-              matchCount++;
-            }
-          });
-
-          if (matchCount > 0) { searchResults.style.display = 'block'; } 
-          else {
-            const li = document.createElement('li');
-            li.textContent = "No matches found";
-            li.style.color = "#9ca3af"; li.style.cursor = "default";
-            searchResults.appendChild(li); searchResults.style.display = 'block';
-          }
-        });
-
-        document.addEventListener('click', function(e) {
-          if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
-            searchResults.style.display = 'none';
-          }
-        });
-
-        searchBtn.addEventListener('click', function() {
-          const query = searchInput.value.toLowerCase();
-          if (!query) return;
-
-          let found = false;
-          schoolsLayer.eachLayer(function(layer) {
-            const schoolName = layer.feature.properties["Mandaluyong Addition Hills Elementary School"] || ""; 
-            if (schoolName.toLowerCase() === query || schoolName.toLowerCase().includes(query)) {
-              if (!document.getElementById('toggleSchools').checked) {
-                 document.getElementById('toggleSchools').click();
-              }
-              map.flyTo(layer.getLatLng(), 16, { animate: true, duration: 1.5 });
-              layer.openPopup();
-              found = true;
-              searchResults.style.display = 'none';
-            }
-          });
-          if (!found) alert("School not found. Please try picking from the dropdown list.");
-        });
-      }).catch(error => console.error("Error loading Schools GeoJSON:", error));
 
     // --- INTERACTIVE TOGGLE LOGIC (CONTEXT LAYERS) ---
     document.getElementById('toggleFlood').addEventListener('change', function() {
@@ -764,5 +776,5 @@
     });
   </script>
 
-</body>
+        </body>
 </html>
